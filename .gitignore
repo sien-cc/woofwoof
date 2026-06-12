@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Environment
+.env
+.venv
+venv/
+
+# Personal configuration
+config.json
+
+# Personal notes and logs
+pet_notes/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+.pet_backups/
+
+# If you initialize a Git repo from the parent Silly folder,
+# add pet_notes/ to that parent .gitignore too.

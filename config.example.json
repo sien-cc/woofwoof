@@ -1,0 +1,71 @@
+{
+  "api_base_url": "https://api.anthropic.com",
+  "model": "claude-opus-4-6",
+  "api_key_env": "CLAUDE_API_KEY",
+  "api_timeout": 180,
+  "api_max_tokens": 4096,
+  "save_chat_logs": true,
+  "load_today_chat_into_context": false,
+  "chat_context_max_messages": 20,
+  "enable_thinking": true,
+  "thinking_budget_tokens": 10000,
+  "screenshot_interval": 5,
+  "screenshot_single_hotkey": "shift+mouse4",
+  "screenshot_continuous_hotkey": "ctrl+mouse4",
+  "screenshot_whitelist": {
+    "enabled": true,
+    "prefer": "foreground",
+    "titles": [],
+    "processes": []
+  },
+  "screenshot_max_size": [1920, 1080],
+  "diary_path": "../pet_notes",
+  "autobiography_file": "人设.md",
+  "diary_file": "日记.md",
+  "assets_path": "gif",
+  "svg_assets_path": "svg",
+  "ui_settings": {
+    "window": {
+      "main_width": 420,
+      "main_height": 230,
+      "screen_margin": 20,
+      "chat_min_width": 560,
+      "chat_min_height": 520,
+      "chat_default_width": 720,
+      "chat_default_height": 720
+    },
+    "pet": {
+      "size": 120,
+      "input_bar_width": 370,
+      "input_bar_height": 52
+    },
+    "animations": {
+      "idle_action_delay_ms": 9000,
+      "idle_action_duration_ms": 5200,
+      "reaction_default_ms": 2600,
+      "reaction_error_ms": 3200,
+      "reaction_notification_ms": 1500,
+      "reaction_happy_ms": 3200,
+      "reply_animation_delay_ms": 650,
+      "user_bubble_display_ms": 6000,
+      "assistant_bubble_display_ms": 18000
+    },
+    "svg_rendering": {
+      "frame_rate": 12,
+      "max_frames": 120,
+      "default_scale": 1.0,
+      "pixmap_cache_limit": 20
+    },
+    "text": {
+      "window_title": "Clawd",
+      "pet_name": "小爪子",
+      "user_name": "你",
+      "input_placeholder": "和小爪子说点什么",
+      "screenshot_message": "这是宝宝发送过来的截图。"
+    },
+    "image_processing": {
+      "thumbnail_size": 150,
+      "max_upload_size_mb": 5
+    }
+  }
+}
