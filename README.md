@@ -139,6 +139,79 @@ clawwww/
 └── svg/                   # SVG 动画资源
 ```
 
+## 🎨 自定义你的桌面宠物
+
+本项目的架构支持完全自定义，你可以替换成任何角色！
+
+### 替换角色动画
+
+1. **准备你的动画素材**
+   - GIF 格式：放在 `gif/` 文件夹
+   - SVG 格式：放在 `svg/` 文件夹
+
+2. **命名规则**
+   - 文件名需要对应 `pet_emotions.py` 中定义的表情名
+   - 例如：`idle.gif`、`happy.gif`、`thinking.gif` 等
+   - 或者修改 `pet_emotions.py` 中的 `GIF_EMOTIONS` 和 `SVG_EMOTIONS` 映射
+
+3. **调整配置**
+   - 在 `config.json` 中可以修改素材路径：
+   ```json
+   "assets_path": "gif",
+   "svg_assets_path": "svg"
+   ```
+
+### 自定义 System Prompt
+
+小爪子的性格和行为由 System Prompt 决定，包括：
+
+1. **人设文件**（`人设.md`）
+   - 定义角色的身份、性格、能力
+   - 修改这个文件可以让它变成任何角色（猫、狗、机器人...）
+
+2. **日记文件**（`日记.md`）
+   - 定义角色最近的"记忆"
+   - 让对话更有连贯性
+
+3. **代码中的 Prompt**（`pet_core.py` 的 `build_system_prompt` 方法）
+   - 如果需要更深度定制，可以修改这个方法
+   - 包括时间感知、工具调用说明等
+
+### 配置文件中的文本
+
+在 `config.json` 的 `ui_settings.text` 中可以修改所有显示文本：
+
+```json
+"text": {
+  "window_title": "你的宠物名字",
+  "pet_name": "宠物昵称",
+  "user_name": "主人昵称",
+  "input_placeholder": "和宠物说点什么",
+  "screenshot_message": "这是主人发送过来的截图。"
+}
+```
+
+### 实现完全不同的角色
+
+**示例：把小爪子改成猫咪**
+
+1. 替换 `gif/` 和 `svg/` 中的动画为猫咪动画
+2. 修改 `人设.md`：
+   ```markdown
+   # 小猫咪的自传
+   
+   我是一只可爱的橘猫，喜欢晒太阳和吃小鱼干...
+   ```
+3. 修改 `config.json` 中的文本：
+   ```json
+   "window_title": "Meow",
+   "pet_name": "小猫咪"
+   ```
+
+这样就变成一个猫咪桌面宠物了！🐱
+
+---
+
 ## 🎨 表情系统
 
 小爪子有丰富的表情和动作：
