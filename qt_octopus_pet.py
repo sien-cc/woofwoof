@@ -12,7 +12,7 @@ from pathlib import Path
 
 import requests
 from PySide6.QtCore import QObject, QPoint, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QMovie, QPainter, QPixmap
+from PySide6.QtGui import QColor, QMovie, QPainter, QPixmap, QIcon, QFont
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QLabel, QWidget
 
@@ -620,6 +620,23 @@ class QtOctopusPet(QWidget):
         self.load_chat_history()
         self.setup_hotkey()
 
+    def create_emoji_icon(self, emoji):
+        """创建 emoji 图标"""
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # 设置字体
+        font = QFont("Segoe UI Emoji", 48)
+        painter.setFont(font)
+
+        # 绘制 emoji
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, emoji)
+        painter.end()
+
+        return QIcon(pixmap)
+
     def load_services(self):
         config_path = self.app_dir / "config.json"
         self.config = load_config_file(config_path)
@@ -656,6 +673,10 @@ class QtOctopusPet(QWidget):
     def create_window(self):
         window_title = get_ui_config(self.config, 'text', 'window_title', default="Clawd")
         self.setWindowTitle(window_title)
+
+        # 设置窗口图标（红色爱心 emoji）
+        self.setWindowIcon(self.create_emoji_icon("❤️"))
+
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
@@ -1276,8 +1297,22 @@ class QtOctopusPet(QWidget):
 
 
 def main():
+    # Windows 任务栏图标设置
+    import sys
+    if sys.platform == "win32":
+        try:
+            # 设置 App User Model ID，让任务栏使用自定义图标
+            import ctypes
+            myappid = 'sien-cc.clawd.desktoppet.1.0'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(True)
+
+    # 设置应用程序图标（任务栏会尝试使用这个）
+    app.setWindowIcon(create_app_emoji_icon("❤️"))
 
     # 检查是否需要运行首次配置向导
     app_dir = Path(__file__).resolve().parent
@@ -1293,6 +1328,27 @@ def main():
     window = QtOctopusPet()
     window.show()
     sys.exit(app.exec())
+
+
+def create_app_emoji_icon(emoji):
+    """创建应用程序级别的 emoji 图标"""
+    from PySide6.QtGui import QIcon, QFont, QPixmap, QPainter
+    from PySide6.QtCore import Qt
+
+    pixmap = QPixmap(64, 64)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+
+    # 设置字体
+    font = QFont("Segoe UI Emoji", 48)
+    painter.setFont(font)
+
+    # 绘制 emoji
+    painter.drawText(pixmap.rect(), Qt.AlignCenter, emoji)
+    painter.end()
+
+    return QIcon(pixmap)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Reusable PySide6 UI widgets for the desktop pet."""
 
 from PySide6.QtCore import QPointF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap, QIcon, QFont
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -778,6 +778,10 @@ class ChatWindow(QWidget):
         input_placeholder = get_ui_config(config, 'text', 'input_placeholder', default="和小爪子说点什么")
 
         self.setWindowTitle(f"{window_title} Chat")
+
+        # 设置聊天窗口图标（红色爱心 emoji）
+        self.setWindowIcon(self.create_emoji_icon("❤️"))
+
         self.setMinimumSize(min_width, min_height)
         self.resize(default_width, default_height)
         self.current_theme = THEME_LIGHT
@@ -892,6 +896,23 @@ class ChatWindow(QWidget):
         self.setAcceptDrops(True)
 
         self.apply_theme(self.current_theme)
+
+    def create_emoji_icon(self, emoji):
+        """创建 emoji 图标"""
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # 设置字体
+        font = QFont("Segoe UI Emoji", 48)
+        painter.setFont(font)
+
+        # 绘制 emoji
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, emoji)
+        painter.end()
+
+        return QIcon(pixmap)
 
     def apply_theme(self, theme):
         """应用主题配色"""
