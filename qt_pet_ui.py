@@ -773,11 +773,10 @@ class ChatWindow(QWidget):
         min_height = get_ui_config(config, 'window', 'chat_min_height', default=520)
         default_width = get_ui_config(config, 'window', 'chat_default_width', default=720)
         default_height = get_ui_config(config, 'window', 'chat_default_height', default=720)
-        window_title = get_ui_config(config, 'text', 'window_title', default="Clawd")
         pet_name = get_ui_config(config, 'text', 'pet_name', default="小爪子")
         input_placeholder = get_ui_config(config, 'text', 'input_placeholder', default="和小爪子说点什么")
 
-        self.setWindowTitle(f"{window_title} Chat")
+        self.setWindowTitle("Chat")
 
         # 设置聊天窗口图标（红色爱心 emoji）
         self.setWindowIcon(self.create_emoji_icon("❤️"))
