@@ -1,14 +1,47 @@
 {
-  "api_base_url": "https://api.anthropic.com",
-  "model": "claude-opus-4-6",
-  "api_key_env": "CLAUDE_API_KEY",
+  "current_config": "1-claude-thinking",
+  "api_configs": {
+    "1-claude-thinking": {
+      "name": "1. Claude (官方/思维链)",
+      "api_base_url": "https://api.anthropic.com",
+      "model": "claude-opus-4-6",
+      "api_key": "",
+      "api_key_env": "CLAUDE_API_KEY",
+      "format": "claude",
+      "enable_thinking": true,
+      "thinking_budget_tokens": 10000
+    },
+    "2-claude": {
+      "name": "2. Claude (官方)",
+      "api_base_url": "https://api.anthropic.com",
+      "model": "claude-opus-4-6",
+      "api_key": "",
+      "api_key_env": "CLAUDE_API_KEY",
+      "format": "claude",
+      "enable_thinking": false
+    },
+    "3-gpt": {
+      "name": "3. GPT",
+      "api_base_url": "https://api.openai.com",
+      "model": "gpt-4",
+      "api_key": "",
+      "api_key_env": "OPENAI_API_KEY",
+      "format": "openai"
+    },
+    "4-deepseek": {
+      "name": "4. DeepSeek",
+      "api_base_url": "https://api.deepseek.com",
+      "model": "deepseek-chat",
+      "api_key": "",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "format": "openai"
+    }
+  },
   "api_timeout": 180,
   "api_max_tokens": 4096,
   "save_chat_logs": true,
-  "load_today_chat_into_context": false,
+  "load_today_chat_into_context": true,
   "chat_context_max_messages": 20,
-  "enable_thinking": true,
-  "thinking_budget_tokens": 10000,
   "screenshot_interval": 5,
   "screenshot_single_hotkey": "shift+mouse4",
   "screenshot_continuous_hotkey": "ctrl+mouse4",
@@ -57,11 +90,16 @@
       "pixmap_cache_limit": 20
     },
     "text": {
-      "window_title": "Clawd",
+      "window_title": "Chat",
       "pet_name": "小爪子",
       "user_name": "你",
-      "input_placeholder": "和小爪子说点什么",
-      "screenshot_message": "这是宝宝发送过来的截图。"
+      "input_placeholder": "和小爪子说点什么"
+    },
+    "prompt": {
+      "ai_identity": "小爪子",
+      "ai_role_description": "一个可爱的章鱼桌面宠物",
+      "user_identity": "宝宝",
+      "screenshot_message": "这是{user_identity}发送过来的截图。"
     },
     "image_processing": {
       "thumbnail_size": 150,

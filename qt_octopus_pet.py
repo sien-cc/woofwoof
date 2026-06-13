@@ -18,7 +18,6 @@ from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QLabel, QWidget
 
 from pet_core import (
     ChatLogStore,
-    ClaudeClient,
     ConversationService,
     MarkdownNoteStore,
     MissingApiKeyError,
@@ -31,6 +30,7 @@ from pet_core import (
     validate_config,
     setup_logging,
 )
+from llm_providers import create_llm_provider, fetch_models_with_cache
 from pet_emotions import GIF_EMOTIONS, IDLE_ACTIONS, SVG_EMOTIONS, SVG_SCALE
 from pet_ui import (
     ASSISTANT_BUBBLE_MIN_HEIGHT,
@@ -641,13 +641,6 @@ class QtOctopusPet(QWidget):
         config_path = self.app_dir / "config.json"
         self.config = load_config_file(config_path)
         validate_config(self.config, config_path)
-        self.api_key_env = self.config.get("api_key_env", "CLAUDE_API_KEY")
-        self.api_key = os.environ.get(self.api_key_env, "")
-
-        # Support environment variable for API base URL
-        api_base_url_env = self.config.get("api_base_url_env")
-        if api_base_url_env:
-            self.config["api_base_url"] = os.environ.get(api_base_url_env, self.config.get("api_base_url", "https://api.anthropic.com"))
 
         self.notes_root = get_notes_root(self.app_dir)
         self.logger = setup_logging(self.notes_root)
@@ -658,10 +651,20 @@ class QtOctopusPet(QWidget):
         )
         self.note_store = MarkdownNoteStore(self.notes_root)
         self.note_action_handler = PetNoteActionHandler(self.note_store)
-        self.claude_client = ClaudeClient(self.config, self.api_key)
+
+        # 创建 LLM Provider（新架构：多套 API 配置）
+        self.llm_provider = create_llm_provider(self.config, cache_dir=self.notes_root)
+
+        # 获取当前配置的 API Key（用于 ConversationService）
+        current_config = self.config.get('current_config', '')
+        api_config = self.config.get('api_configs', {}).get(current_config, {})
+        self.api_key_env = api_config.get('api_key_env', 'API_KEY')
+        self.api_key = api_config.get('api_key', '') or os.environ.get(self.api_key_env, '')
+
         self.conversation_service = ConversationService(
-            self.claude_client,
+            self.llm_provider,
             self.note_action_handler,
+            self.config,
             api_key_env=self.api_key_env,
             api_key=self.api_key,
         )
@@ -1272,10 +1275,196 @@ class QtOctopusPet(QWidget):
             self.animator.mark_activity()
             self.input_bar.setVisible(not self.input_bar.isVisible())
 
+    def show_context_menu(self, pos):
+        """显示右键菜单"""
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QActionGroup
+
+        menu = QMenu(self)
+
+        # API 配置切换子菜单
+        config_menu = menu.addMenu("🔄 切换 API 配置")
+
+        current_config = self.config.get('current_config', '')
+        api_configs = self.config.get('api_configs', {})
+
+        action_group = QActionGroup(self)
+        action_group.setExclusive(True)
+
+        for config_id, config_data in api_configs.items():
+            config_name = config_data.get('name', config_id)
+            action = config_menu.addAction(config_name)
+            action.setCheckable(True)
+            action.setChecked(config_id == current_config)
+            action.setData(config_id)
+
+            # 检查是否配置了 API Key
+            has_key = bool(config_data.get('api_key') or config_data.get('api_key_env'))
+            if not has_key:
+                action.setEnabled(False)
+                action.setText(f"{config_name} (未配置 Key)")
+
+            action.triggered.connect(lambda checked, cid=config_id: self.switch_config(cid))
+            action_group.addAction(action)
+
+        config_menu.addSeparator()
+        config_menu.addAction("⚙️ 编辑配置文件...", self.open_config_file)
+
+        # 模型选择
+        menu.addSeparator()
+        menu.addAction("📋 选择模型...", self.fetch_and_select_model)
+
+        menu.addSeparator()
+        menu.addAction("❌ 退出", self.close)
+
+        menu.exec(pos)
+
+    def switch_config(self, config_id):
+        """切换 API 配置"""
+        old_config = self.config.get('current_config')
+        if old_config == config_id:
+            return
+
+        try:
+            # 更新配置
+            self.config['current_config'] = config_id
+            self.save_config()
+
+            # 重新创建 LLM Provider
+            self.llm_provider = create_llm_provider(self.config, cache_dir=self.notes_root)
+            self.conversation_service.llm_provider = self.llm_provider
+
+            # 获取配置名称
+            config_name = self.config['api_configs'][config_id].get('name', config_id)
+
+            # 显示通知
+            self.show_status_bubble(f"✓ 已切换到 {config_name}")
+            self.logger.info(f"切换到配置: {config_name} ({config_id})")
+
+        except Exception as e:
+            self.logger.error(f"切换配置失败: {e}")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "切换失败",
+                f"切换到 {config_id} 失败：\n{str(e)}\n\n请检查配置或 API Key。"
+            )
+
+
+    def save_config(self):
+        """保存配置到文件"""
+        config_path = self.app_dir / 'config.json'
+        with open(config_path, 'w', encoding='utf-8') as f:
+            import json
+            json.dump(self.config, f, indent=2, ensure_ascii=False)
+
+    def open_config_file(self):
+        """打开配置文件"""
+        import os
+        import subprocess
+        config_path = self.app_dir / 'config.json'
+
+        if os.name == 'nt':  # Windows
+            os.startfile(config_path)
+        elif os.name == 'posix':  # macOS/Linux
+            subprocess.call(['open' if sys.platform == 'darwin' else 'xdg-open', config_path])
+
+    def fetch_and_select_model(self):
+        """获取并选择模型"""
+        from PySide6.QtWidgets import QMessageBox, QInputDialog
+        from PySide6.QtCore import QThread, Signal as QtSignal
+
+        current_config_id = self.config.get('current_config')
+        current_config = self.config['api_configs'].get(current_config_id, {})
+        current_model = current_config.get('model', '')
+
+        # 显示加载提示
+        self.show_status_bubble("正在获取模型列表...")
+
+        # 在后台线程获取模型
+        class FetchThread(QThread):
+            finished = QtSignal(object)
+
+            def __init__(self, config, notes_root, config_id):
+                super().__init__()
+                self.config = config
+                self.notes_root = notes_root
+                self.config_id = config_id
+
+            def run(self):
+                models = fetch_models_with_cache(
+                    self.config,
+                    self.notes_root,
+                    self.config_id,
+                    force_refresh=False
+                )
+                self.finished.emit(models)
+
+        def on_models_fetched(models):
+            if models is None or len(models) == 0:
+                QMessageBox.information(
+                    self,
+                    "获取模型列表",
+                    f"无法获取模型列表。\n\n"
+                    f"可能原因：\n"
+                    f"• API 不支持模型列表端点\n"
+                    f"• 网络连接问题\n"
+                    f"• API Key 无效\n\n"
+                    f"当前模型：{current_model}\n\n"
+                    f"你可以手动编辑配置文件修改模型。"
+                )
+                return
+
+            # 显示模型选择对话框
+            model, ok = QInputDialog.getItem(
+                self,
+                "选择模型",
+                f"当前配置：{current_config.get('name', current_config_id)}\n"
+                f"当前模型：{current_model}\n\n"
+                f"请选择新模型：",
+                models,
+                models.index(current_model) if current_model in models else 0,
+                False
+            )
+
+            if ok and model and model != current_model:
+                # 更新配置
+                self.config['api_configs'][current_config_id]['model'] = model
+                self.save_config()
+
+                # 重新创建 LLM Provider
+                self.llm_provider = create_llm_provider(self.config, cache_dir=self.notes_root)
+                self.conversation_service.llm_provider = self.llm_provider
+
+                self.show_status_bubble(f"✓ 已切换模型到 {model}")
+                self.logger.info(f"切换模型: {current_model} -> {model}")
+
+        self.fetch_thread = FetchThread(self.config, self.notes_root, current_config_id)
+        self.fetch_thread.finished.connect(on_models_fetched)
+        self.fetch_thread.start()
+
+    def show_status_bubble(self, message):
+        """显示状态提示气泡"""
+        bubble = FloatingBubble("assistant", message)
+        bubble.setStyleSheet("background: transparent;")
+
+        # 位置在宠物上方
+        pet_rect = self.frameGeometry()
+        bubble_x = pet_rect.center().x() - bubble.width() // 2
+        bubble_y = pet_rect.top() - bubble.height() - 10
+        bubble.move(bubble_x, bubble_y)
+        bubble.show()
+
+        # 2秒后自动关闭
+        QTimer.singleShot(2000, bubble.close)
+
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.animator.mark_activity()
             self.drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+        elif event.button() == Qt.RightButton:
+            self.show_context_menu(event.globalPosition().toPoint())
             event.accept()
 
     def mouseMoveEvent(self, event):

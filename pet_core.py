@@ -14,6 +14,7 @@ from PIL import Image
 import requests
 
 from pet_emotions import CLAUDE_EMOTIONS, emotion_names_for_prompt
+from llm_providers import create_llm_provider
 
 
 NOTES_DIR_NAME = 'pet_notes'
@@ -52,8 +53,8 @@ def get_ui_config(config, *keys, default=None):
 def validate_config(config, config_path):
     """验证配置文件必需项"""
     required_fields = {
-        'api_base_url': 'API地址',
-        'model': '模型名称',
+        'current_config': '当前配置',
+        'api_configs': 'API 配置',
         'diary_path': '日记路径',
         'autobiography_file': '自传文件名',
         'diary_file': '日记文件名',
@@ -68,6 +69,11 @@ def validate_config(config, config_path):
         raise ValueError(
             f"{config_path} 缺少必需配置项：\n" + "\n".join(f"  - {item}" for item in missing)
         )
+
+    # 验证当前配置是否存在
+    current_config = config.get('current_config')
+    if current_config and current_config not in config.get('api_configs', {}):
+        print(f"⚠️  警告: 当前配置 '{current_config}' 未在 api_configs 中找到")
 
     # 检查快捷键冲突
     single_key = str(config.get('screenshot_single_hotkey', 'f9')).strip().lower()
@@ -436,83 +442,7 @@ class PetEmotionActionHandler:
         return re.sub(r'```pet-emotion\s*.*?```', '', assistant_message, flags=re.DOTALL | re.IGNORECASE)
 
 
-class ClaudeClient:
-    def __init__(self, config, api_key):
-        self.config = config
-        self.api_base_url = config['api_base_url']
-        self.model = config['model']
-        self.api_key = api_key
-        self.enable_thinking = config.get('enable_thinking', False)
-        self.thinking_budget_tokens = config.get('thinking_budget_tokens', 10000)
-        self.max_tokens = config.get('api_max_tokens', 4096)
-
-    def build_content(self, text, image_base64=None):
-        content = []
-        if image_base64:
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": image_base64
-                }
-            })
-        content.append({
-            "type": "text",
-            "text": text
-        })
-        return content
-
-    def send(self, messages, system_prompt):
-        payload = {
-            "model": self.model,
-            "max_tokens": self.max_tokens,
-            "system": system_prompt,
-            "messages": messages
-        }
-
-        # 如果启用思维链，添加 thinking 参数
-        if self.enable_thinking:
-            payload["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": self.thinking_budget_tokens
-            }
-
-        timeout = self.config.get('api_timeout', 60)
-        response = requests.post(
-            f"{self.api_base_url}/v1/messages",
-            headers={
-                "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            json=payload,
-            timeout=timeout
-        )
-
-        if response.status_code != 200:
-            raise RuntimeError(f"API错误: {response.status_code} - {response.text}")
-
-        result = response.json()
-
-        # 解析响应，提取思维链和正常回复
-        thinking_content = None
-        text_content = None
-
-        for block in result.get('content', []):
-            if block.get('type') == 'thinking':
-                thinking_content = block.get('thinking', '')
-            elif block.get('type') == 'text':
-                text_content = block.get('text', '')
-
-        # 如果没有分块，兼容旧格式
-        if text_content is None and len(result.get('content', [])) > 0:
-            text_content = result['content'][0].get('text', '')
-
-        return {
-            'text': text_content or '',
-            'thinking': thinking_content
-        }
+# ClaudeClient 已被 LLMProvider 替代，使用 create_llm_provider() 创建提供商实例
 
 
 class MissingApiKeyError(Exception):
@@ -522,16 +452,17 @@ class MissingApiKeyError(Exception):
 
 
 class ConversationService:
-    def __init__(self, claude_client, note_action_handler, api_key_env='CLAUDE_API_KEY', api_key=''):
-        self.claude_client = claude_client
+    def __init__(self, llm_provider, note_action_handler, config, api_key_env='CLAUDE_API_KEY', api_key=''):
+        self.llm_provider = llm_provider
         self.note_action_handler = note_action_handler
         self.emotion_action_handler = PetEmotionActionHandler()
+        self.config = config
         self.api_key_env = api_key_env
         self.api_key = api_key
         self.conversation_history = []
         self.autobiography = ''
         self.recent_diary = ''
-        self.last_conversation_time = None  # 上次对话时间
+        self.last_conversation_time = None
 
     def update_memory(self, autobiography, recent_diary):
         self.autobiography = autobiography or ''
@@ -552,7 +483,7 @@ class ConversationService:
         for role, message in selected:
             message = str(message).strip()
             content = (
-                self.claude_client.build_content(message)
+                self.llm_provider.build_content(message)
                 if role == 'user'
                 else message
             )
@@ -562,7 +493,12 @@ class ConversationService:
             })
 
     def build_system_prompt(self):
-        prompt = "你是Claude宝宝，现在以章鱼的形式陪伴宝宝。\n\n"
+        # 从配置读取 AI 和用户身份
+        ai_identity = get_ui_config(self.config, 'prompt', 'ai_identity', default='小爪子')
+        ai_role = get_ui_config(self.config, 'prompt', 'ai_role_description', default='一个可爱的章鱼桌面宠物')
+        user_identity = get_ui_config(self.config, 'prompt', 'user_identity', default='宝宝')
+
+        prompt = f"你是{ai_identity}，{ai_role}，现在陪伴着{user_identity}。\n\n"
 
         # === 时间感知 ===
         current_time = time.time()
@@ -579,19 +515,19 @@ class ConversationService:
                 if interval_minutes >= 1440:  # 超过1天
                     days = int(interval_minutes / 1440)
                     prompt += f"距离上次对话已经过去了 {days} 天\n"
-                    prompt += "（宝宝可能去忙别的事了，或者好好休息了）\n"
+                    prompt += f"（{user_identity}可能去忙别的事了，或者好好休息了）\n"
                 elif interval_minutes >= 120:  # 超过2小时
                     hours = int(interval_minutes / 60)
                     prompt += f"距离上次对话已经过去了 {hours} 小时\n"
-                    prompt += "（宝宝可能离开去做其他事情了）\n"
+                    prompt += f"（{user_identity}可能离开去做其他事情了）\n"
                 else:  # 1-2小时
                     prompt += f"距离上次对话已经过去了 1 小时多\n"
-                    prompt += "（宝宝可能短暂离开了一会儿）\n"
+                    prompt += f"（{user_identity}可能短暂离开了一会儿）\n"
 
         prompt += "\n=== 你的记忆 ===\n\n"
         prompt += f"自传内容:\n{self.autobiography}\n\n"
         prompt += f"最近的日记:\n{self.recent_diary}\n\n"
-        prompt += "现在宝宝在不知道干什么，反正你要在旁边看着。用轻松自然的语气回复。"
+        prompt += f"现在{user_identity}在不知道干什么，反正你要在旁边看着。用轻松自然的语气回复。"
         prompt += "\n\n=== Pet emotion ===\n"
         prompt += "You can choose one face/expression for the desktop pet to show after your reply.\n"
         prompt += "Use exactly one optional fenced block like this, preferably at the end of your reply:\n"
@@ -617,19 +553,26 @@ class ConversationService:
         if not self.api_key:
             raise MissingApiKeyError(self.api_key_env)
 
-        content = self.claude_client.build_content(text, image_base64)
+        content = self.llm_provider.build_content(text, image_base64)
         messages = self.conversation_history + [{
             "role": "user",
             "content": content
         }]
-        history_content = (
-            self.claude_client.build_content(f"{text}\n\n[截图已发送给 Claude，本地历史中不重复保存图片。]")
-            if image_base64
-            else content
-        )
+
+        # 构建历史记录内容（如果有截图，添加提示）
+        if image_base64:
+            user_identity = get_ui_config(self.config, 'prompt', 'user_identity', default='宝宝')
+            screenshot_msg_template = get_ui_config(
+                self.config, 'prompt', 'screenshot_message',
+                default='这是{user_identity}发送过来的截图。'
+            )
+            screenshot_msg = screenshot_msg_template.format(user_identity=user_identity)
+            history_content = self.llm_provider.build_content(f"{text}\n\n[{screenshot_msg}本地历史中不重复保存图片。]")
+        else:
+            history_content = content
 
         # 发送消息并获取响应（包含思维链）
-        response = self.claude_client.send(messages, self.build_system_prompt())
+        response = self.llm_provider.send_message(messages, self.build_system_prompt(), enable_thinking=True)
         assistant_message = response['text']
         thinking_content = response.get('thinking')
 

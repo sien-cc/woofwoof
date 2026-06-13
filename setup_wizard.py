@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""首次运行配置向导"""
+"""首次运行配置向导 - 简化版"""
 
 import json
 import os
@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QCheckBox,
     QGroupBox,
+    QRadioButton,
+    QButtonGroup,
 )
 
 
@@ -33,7 +35,7 @@ class SetupWizard(QDialog):
         self.example_config_path = self.app_dir / "config.example.json"
 
         self.setWindowTitle("小爪子 - 首次运行配置")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(600, 700)
         self.setModal(True)
 
         self.init_ui()
@@ -51,290 +53,338 @@ class SetupWizard(QDialog):
 
         intro = QLabel(
             "这是你第一次运行小爪子，让我们快速配置一下吧！\n"
-            "只需要几个简单的步骤，小爪子就能陪伴你了。"
+            "只需要填写 API 信息，小爪子就能陪伴你了。"
         )
         intro.setWordWrap(True)
         intro.setAlignment(Qt.AlignCenter)
         intro.setStyleSheet("font-size: 11pt; color: #666;")
         layout.addWidget(intro)
 
-        # API Key 配置
-        api_group = QGroupBox("1. API Key 配置")
+        # 预设选择
+        preset_group = QGroupBox("1. 选择预设（可选）")
+        preset_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        preset_layout = QVBoxLayout()
+
+        self.preset_buttons = QButtonGroup(self)
+
+        presets = [
+            ("none", "不使用预设（手动填写）", "", ""),
+            ("claude", "Claude 官方", "https://api.anthropic.com", "claude-opus-4-6"),
+            ("openai", "OpenAI 官方", "https://api.openai.com", "gpt-4"),
+            ("gemini", "Gemini 官方", "https://generativelanguage.googleapis.com/v1beta", "gemini-3.5-flash"),
+            ("deepseek", "DeepSeek 官方", "https://api.deepseek.com", "deepseek-chat"),
+        ]
+
+        for i, (preset_id, display_name, url, model) in enumerate(presets):
+            radio = QRadioButton(display_name)
+            radio.setProperty("preset_id", preset_id)
+            radio.setProperty("preset_url", url)
+            radio.setProperty("preset_model", model)
+            self.preset_buttons.addButton(radio, i)
+            preset_layout.addWidget(radio)
+            if preset_id == "none":
+                radio.setChecked(True)
+
+        self.preset_buttons.buttonClicked.connect(self.on_preset_changed)
+        preset_group.setLayout(preset_layout)
+        layout.addWidget(preset_group)
+
+        # API 配置
+        api_group = QGroupBox("2. API 配置")
         api_group.setStyleSheet("QGroupBox { font-weight: bold; }")
         api_layout = QVBoxLayout()
 
-        api_hint = QLabel(
-            "小爪子需要 Claude API Key 才能和你聊天。\n"
-            "你可以在 https://console.anthropic.com/ 获取 API Key。"
-        )
-        api_hint.setWordWrap(True)
-        api_hint.setStyleSheet("color: #666; font-size: 9pt;")
-        api_layout.addWidget(api_hint)
+        # API 地址
+        api_url_layout = QHBoxLayout()
+        api_url_label = QLabel("API 地址:")
+        api_url_label.setMinimumWidth(80)
+        self.api_url_input = QLineEdit()
+        self.api_url_input.setPlaceholderText("https://api.anthropic.com 或中转地址")
+        api_url_layout.addWidget(api_url_label)
+        api_url_layout.addWidget(self.api_url_input)
+        api_layout.addLayout(api_url_layout)
 
-        api_input_layout = QHBoxLayout()
-        api_label = QLabel("API Key:")
+        # 模型名称
+        model_layout = QHBoxLayout()
+        model_label = QLabel("模型名称:")
+        model_label.setMinimumWidth(80)
+        self.model_input = QLineEdit()
+        self.model_input.setPlaceholderText("claude-opus-4-6 或 gpt-4 等")
+        model_layout.addWidget(model_label)
+        model_layout.addWidget(self.model_input)
+        api_layout.addLayout(model_layout)
+
+        # API Key
+        api_key_layout = QHBoxLayout()
+        api_key_label = QLabel("API Key:")
+        api_key_label.setMinimumWidth(80)
         self.api_key_input = QLineEdit()
-        self.api_key_input.setPlaceholderText("sk-ant-...")
+        self.api_key_input.setPlaceholderText("sk-ant-... 或环境变量名")
         self.api_key_input.setEchoMode(QLineEdit.Password)
-        api_input_layout.addWidget(api_label)
-        api_input_layout.addWidget(self.api_key_input, 1)
-        api_layout.addLayout(api_input_layout)
+        api_key_layout.addWidget(api_key_label)
+        api_key_layout.addWidget(self.api_key_input)
+        api_layout.addLayout(api_key_layout)
 
-        self.use_env_var = QCheckBox("使用环境变量 CLAUDE_API_KEY（推荐）")
+        self.use_env_var = QCheckBox("使用环境变量存储 API Key（推荐）")
         self.use_env_var.setChecked(True)
         self.use_env_var.toggled.connect(self.toggle_api_input)
         api_layout.addWidget(self.use_env_var)
 
+        api_hint = QLabel(
+            "提示：\n"
+            "• 使用环境变量时，填写变量名（如 CLAUDE_API_KEY）\n"
+            "• 不使用环境变量时，直接填写完整 API Key\n"
+            "• 中转 API 通常兼容 OpenAI 格式，直接填中转地址即可"
+        )
+        api_hint.setWordWrap(True)
+        api_hint.setStyleSheet("color: #888; font-size: 9pt; margin-top: 5px;")
+        api_layout.addWidget(api_hint)
+
         api_group.setLayout(api_layout)
         layout.addWidget(api_group)
 
-        # 存储路径配置
-        path_group = QGroupBox("2. 笔记存储路径")
+        # 高级选项
+        advanced_group = QGroupBox("3. 高级选项（可选）")
+        advanced_group.setStyleSheet("QGroupBox { font-weight: bold; }")
+        advanced_layout = QVBoxLayout()
+
+        # API 格式
+        format_layout = QHBoxLayout()
+        format_label = QLabel("API 格式:")
+        format_label.setMinimumWidth(80)
+        self.format_buttons = QButtonGroup(self)
+
+        openai_radio = QRadioButton("OpenAI 兼容（默认）")
+        openai_radio.setProperty("format", "openai")
+        openai_radio.setChecked(True)
+        self.format_buttons.addButton(openai_radio)
+
+        claude_radio = QRadioButton("Claude 官方")
+        claude_radio.setProperty("format", "claude")
+        self.format_buttons.addButton(claude_radio)
+
+        gemini_radio = QRadioButton("Gemini 官方")
+        gemini_radio.setProperty("format", "gemini")
+        self.format_buttons.addButton(gemini_radio)
+
+        format_layout.addWidget(format_label)
+        format_layout.addWidget(openai_radio)
+        format_layout.addWidget(claude_radio)
+        format_layout.addWidget(gemini_radio)
+        advanced_layout.addLayout(format_layout)
+
+        # Claude 思维链
+        self.enable_thinking = QCheckBox("启用 Claude 思维链（仅 Claude 官方格式）")
+        self.enable_thinking.setChecked(True)
+        advanced_layout.addWidget(self.enable_thinking)
+
+        advanced_hint = QLabel(
+            "• 大部分中转 API 使用 OpenAI 兼容格式\n"
+            "• 只有直连 Claude 官方或支持 Claude 格式的中转才选 Claude 官方"
+        )
+        advanced_hint.setWordWrap(True)
+        advanced_hint.setStyleSheet("color: #888; font-size: 9pt; margin-top: 5px;")
+        advanced_layout.addWidget(advanced_hint)
+
+        advanced_group.setLayout(advanced_layout)
+        layout.addWidget(advanced_group)
+
+        # 存储路径
+        path_group = QGroupBox("4. 数据存储路径")
         path_group.setStyleSheet("QGroupBox { font-weight: bold; }")
         path_layout = QVBoxLayout()
 
-        path_hint = QLabel(
-            "选择一个文件夹来保存聊天记录、人设和日记。\n"
-            "默认会在程序目录的上级创建 pet_notes 文件夹。"
-        )
-        path_hint.setWordWrap(True)
-        path_hint.setStyleSheet("color: #666; font-size: 9pt;")
-        path_layout.addWidget(path_hint)
+        diary_layout = QHBoxLayout()
+        diary_label = QLabel("笔记路径:")
+        diary_label.setMinimumWidth(80)
+        self.diary_path_input = QLineEdit()
+        default_notes_path = str((self.app_dir.parent / "pet_notes").resolve())
+        self.diary_path_input.setText(default_notes_path)
+        browse_btn = QPushButton("浏览...")
+        browse_btn.clicked.connect(self.browse_diary_path)
+        diary_layout.addWidget(diary_label)
+        diary_layout.addWidget(self.diary_path_input)
+        diary_layout.addWidget(browse_btn)
+        path_layout.addLayout(diary_layout)
 
-        path_input_layout = QHBoxLayout()
-        self.path_input = QLineEdit()
-        default_path = str((self.app_dir.parent / "pet_notes").resolve())
-        self.path_input.setText(default_path)
-        browse_button = QPushButton("浏览...")
-        browse_button.clicked.connect(self.browse_path)
-        path_input_layout.addWidget(self.path_input, 1)
-        path_input_layout.addWidget(browse_button)
-        path_layout.addLayout(path_input_layout)
+        path_hint = QLabel("小爪子会在这里保存聊天记录、日记和自传")
+        path_hint.setStyleSheet("color: #888; font-size: 9pt;")
+        path_layout.addWidget(path_hint)
 
         path_group.setLayout(path_layout)
         layout.addWidget(path_group)
-
-        # 人设和日记
-        memory_group = QGroupBox("3. 初始化人设和日记")
-        memory_group.setStyleSheet("QGroupBox { font-weight: bold; }")
-        memory_layout = QVBoxLayout()
-
-        memory_hint = QLabel(
-            "我们会为你创建人设和日记的模板文件。\n"
-            "你可以稍后编辑这些文件来让小爪子更了解你！"
-        )
-        memory_hint.setWordWrap(True)
-        memory_hint.setStyleSheet("color: #666; font-size: 9pt;")
-        memory_layout.addWidget(memory_hint)
-
-        self.create_templates = QCheckBox("创建人设和日记模板（推荐）")
-        self.create_templates.setChecked(True)
-        memory_layout.addWidget(self.create_templates)
-
-        memory_group.setLayout(memory_layout)
-        layout.addWidget(memory_group)
-
-        layout.addStretch()
 
         # 按钮
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
-        cancel_button = QPushButton("取消")
-        cancel_button.clicked.connect(self.reject)
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
 
-        finish_button = QPushButton("完成配置 ✨")
-        finish_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #de886d;
-                color: white;
-                font-weight: bold;
-                padding: 8px 20px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #c97258;
-            }
-            """
-        )
-        finish_button.clicked.connect(self.finish_setup)
+        save_btn = QPushButton("保存配置")
+        save_btn.setStyleSheet("QPushButton { background: #de886d; color: white; font-weight: bold; padding: 8px 20px; }")
+        save_btn.clicked.connect(self.save_config)
+        button_layout.addWidget(save_btn)
 
-        button_layout.addWidget(cancel_button)
-        button_layout.addWidget(finish_button)
         layout.addLayout(button_layout)
 
+        # 初始化输入框状态
         self.toggle_api_input(True)
 
-    def toggle_api_input(self, checked):
-        """切换 API Key 输入框的启用状态"""
-        self.api_key_input.setEnabled(not checked)
-        if checked:
-            self.api_key_input.setPlaceholderText("将从环境变量 CLAUDE_API_KEY 读取")
-        else:
-            self.api_key_input.setPlaceholderText("sk-ant-...")
-
-    def browse_path(self):
-        """浏览文件夹"""
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "选择笔记存储路径",
-            self.path_input.text()
-        )
-        if path:
-            self.path_input.setText(path)
-
-    def finish_setup(self):
-        """完成配置"""
-        # 验证输入
-        if not self.use_env_var.isChecked():
-            api_key = self.api_key_input.text().strip()
-            if not api_key:
-                QMessageBox.warning(self, "提示", "请输入 API Key 或选择使用环境变量！")
-                return
-            if not api_key.startswith("sk-ant-"):
-                reply = QMessageBox.question(
-                    self,
-                    "确认",
-                    "你输入的 API Key 格式看起来不太对（通常以 sk-ant- 开头）。\n确定要继续吗？",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    return
-        else:
-            # 检查环境变量是否存在
-            if not os.environ.get("CLAUDE_API_KEY"):
-                reply = QMessageBox.question(
-                    self,
-                    "提示",
-                    "环境变量 CLAUDE_API_KEY 尚未设置。\n"
-                    "你需要在系统环境变量中设置它，否则小爪子无法工作。\n\n"
-                    "是否继续？（你可以稍后设置环境变量）",
-                    QMessageBox.Yes | QMessageBox.No
-                )
-                if reply == QMessageBox.No:
-                    return
-
-        notes_path = Path(self.path_input.text().strip())
-        if not notes_path:
-            QMessageBox.warning(self, "提示", "请选择笔记存储路径！")
+    def on_preset_changed(self):
+        """预设改变时自动填充"""
+        button = self.preset_buttons.checkedButton()
+        if not button:
             return
 
-        try:
-            # 创建配置文件
-            self.create_config(notes_path)
+        url = button.property("preset_url")
+        model = button.property("preset_model")
+        preset_id = button.property("preset_id")
 
-            # 创建笔记目录和模板
-            if self.create_templates.isChecked():
-                self.create_notes_structure(notes_path)
+        if url:
+            self.api_url_input.setText(url)
+        if model:
+            self.model_input.setText(model)
+
+        # 根据预设设置格式
+        if preset_id == "claude":
+            for btn in self.format_buttons.buttons():
+                if btn.property("format") == "claude":
+                    btn.setChecked(True)
+                    break
+        elif preset_id == "gemini":
+            for btn in self.format_buttons.buttons():
+                if btn.property("format") == "gemini":
+                    btn.setChecked(True)
+                    break
+        else:
+            for btn in self.format_buttons.buttons():
+                if btn.property("format") == "openai":
+                    btn.setChecked(True)
+                    break
+
+    def toggle_api_input(self, use_env):
+        """切换 API Key 输入模式"""
+        if use_env:
+            self.api_key_input.setPlaceholderText("环境变量名（如 CLAUDE_API_KEY）")
+            self.api_key_input.setEchoMode(QLineEdit.Normal)
+            self.api_key_input.setText("CLAUDE_API_KEY")
+        else:
+            self.api_key_input.setPlaceholderText("完整 API Key（如 sk-ant-...）")
+            self.api_key_input.setEchoMode(QLineEdit.Password)
+            self.api_key_input.clear()
+
+    def browse_diary_path(self):
+        """浏览笔记路径"""
+        path = QFileDialog.getExistingDirectory(
+            self, "选择笔记存储路径", self.diary_path_input.text()
+        )
+        if path:
+            self.diary_path_input.setText(path)
+
+    def save_config(self):
+        """保存配置"""
+        api_url = self.api_url_input.text().strip()
+        model = self.model_input.text().strip()
+        api_key_input = self.api_key_input.text().strip()
+        diary_path = self.diary_path_input.text().strip()
+        use_env = self.use_env_var.isChecked()
+
+        # 验证必填项
+        if not api_url:
+            QMessageBox.warning(self, "配置错误", "请填写 API 地址")
+            return
+        if not model:
+            QMessageBox.warning(self, "配置错误", "请填写模型名称")
+            return
+        if not api_key_input:
+            QMessageBox.warning(self, "配置错误", "请填写 API Key 或环境变量名")
+            return
+        if not diary_path:
+            QMessageBox.warning(self, "配置错误", "请选择笔记存储路径")
+            return
+
+        # 获取 API 格式
+        api_format = "openai"
+        for btn in self.format_buttons.buttons():
+            if btn.isChecked():
+                api_format = btn.property("format")
+                break
+
+        # 构建配置
+        try:
+            # 加载示例配置作为模板
+            with open(self.example_config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            # 创建主配置
+            main_config = {
+                "name": "1. 主配置",
+                "api_base_url": api_url,
+                "model": model,
+                "format": api_format
+            }
+
+            if use_env:
+                main_config["api_key"] = ""
+                main_config["api_key_env"] = api_key_input
+            else:
+                main_config["api_key"] = api_key_input
+                main_config["api_key_env"] = ""
+
+            # Claude 官方格式的思维链配置
+            if api_format == "claude" and self.enable_thinking.isChecked():
+                main_config["enable_thinking"] = True
+                main_config["thinking_budget_tokens"] = 10000
+
+            config["current_config"] = "main"
+            config["api_configs"] = {
+                "main": main_config
+            }
+
+            # 更新笔记路径
+            config["diary_path"] = diary_path
+
+            # 确保笔记目录存在
+            diary_path_obj = Path(diary_path)
+            diary_path_obj.mkdir(parents=True, exist_ok=True)
+
+            # 保存配置
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
 
             QMessageBox.information(
                 self,
-                "配置完成",
-                "配置已完成！小爪子即将启动。\n\n"
-                f"配置文件：{self.config_path}\n"
-                f"笔记路径：{notes_path}\n\n"
-                "你可以随时编辑配置文件和笔记来调整小爪子的行为。"
+                "配置成功",
+                "配置已保存！小爪子即将启动。\n\n"
+                "提示：可以在配置文件中添加更多 API 配置，右键小爪子即可切换。"
             )
             self.accept()
 
         except Exception as e:
             QMessageBox.critical(
-                self,
-                "错误",
-                f"配置过程中出现错误：\n{str(e)}\n\n请检查路径权限或联系开发者。"
+                self, "保存失败", f"保存配置时出错：\n{str(e)}"
             )
 
-    def create_config(self, notes_path):
-        """创建配置文件"""
-        # 从示例配置读取
-        if self.example_config_path.exists():
-            with open(self.example_config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-        else:
-            # 如果没有示例配置，创建一个基础配置
-            config = {
-                "api_base_url": "https://api.anthropic.com",
-                "model": "claude-opus-4-6",
-                "api_key_env": "CLAUDE_API_KEY",
-                "api_timeout": 180,
-                "save_chat_logs": True,
-                "load_today_chat_into_context": False,
-                "chat_context_max_messages": 20,
-                "screenshot_interval": 5,
-                "screenshot_single_hotkey": "shift+mouse4",
-                "screenshot_continuous_hotkey": "ctrl+mouse4",
-                "screenshot_whitelist": {
-                    "enabled": False,
-                    "prefer": "foreground",
-                    "titles": [],
-                    "processes": []
-                }
-            }
 
-        # 更新配置
-        config["diary_path"] = str(notes_path)
-        config["autobiography_file"] = "人设.md"
-        config["diary_file"] = "日记.md"
+def main():
+    app = QApplication(sys.argv)
 
-        # 如果用户直接输入了 API Key，保存到配置
-        if not self.use_env_var.isChecked():
-            api_key = self.api_key_input.text().strip()
-            config["api_key"] = api_key
-            config.pop("api_key_env", None)
-
-        # 保存配置
-        with open(self.config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-
-    def create_notes_structure(self, notes_path):
-        """创建笔记目录结构和模板文件"""
-        notes_path = Path(notes_path)
-        notes_path.mkdir(parents=True, exist_ok=True)
-
-        # 复制模板文件
-        templates_dir = self.app_dir / "templates"
-
-        person_template = templates_dir / "人设模板.md"
-        diary_template = templates_dir / "日记模板.md"
-
-        person_dest = notes_path / "人设.md"
-        diary_dest = notes_path / "日记.md"
-
-        # 只在文件不存在时复制
-        if not person_dest.exists() and person_template.exists():
-            shutil.copy2(person_template, person_dest)
-
-        if not diary_dest.exists() and diary_template.exists():
-            shutil.copy2(diary_template, diary_dest)
-
-
-def should_show_wizard(app_dir):
-    """检查是否需要显示配置向导"""
-    config_path = Path(app_dir) / "config.json"
-    return not config_path.exists()
-
-
-def run_wizard(app_dir):
-    """运行配置向导"""
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv)
+    # 获取应用目录
+    if getattr(sys, 'frozen', False):
+        app_dir = Path(sys.executable).parent
+    else:
+        app_dir = Path(__file__).parent
 
     wizard = SetupWizard(app_dir)
-    result = wizard.exec()
+    if wizard.exec() == QDialog.Accepted:
+        print("配置完成")
+    else:
+        print("取消配置")
 
-    return result == QDialog.Accepted
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    # 测试
-    app_dir = Path(__file__).resolve().parent
-    if should_show_wizard(app_dir):
-        success = run_wizard(app_dir)
-        if success:
-            print("配置完成！")
-        else:
-            print("用户取消了配置。")
-    else:
-        print("配置文件已存在。")
+    main()
